@@ -1,56 +1,65 @@
 # Azure User Access Review Toolkit
 
-Conjunto de scripts PowerShell para avaliar, de forma read-only, quais acessos e informacoes uma conta de usuario consegue obter em um ambiente Azure/Entra ID.
+Conjunto de scripts PowerShell para avaliar, de forma read-only, quais acessos e informações uma conta de usuário consegue obter em um ambiente Azure/Entra ID.
 
-O objetivo e apoiar analistas de seguranca a entenderem a exposicao real de uma conta: tenants acessiveis, identidade autenticada, roles, escopos RBAC, recursos visiveis, permissoes efetivas em servicos sensiveis e achados que merecem revisao.
+O objetivo é apoiar analistas de segurança a entenderem a exposição real de uma conta: tenants acessíveis, identidade autenticada, roles, escopos RBAC, recursos visíveis, permissões efetivas em serviços sensíveis e achados que merecem revisão.
 
 ## O que o toolkit coleta
 
-- Contexto de autenticacao Azure e Microsoft Graph.
-- Subscriptions visiveis e roles RBAC efetivas.
-- Inventario de recursos Azure visiveis pela conta.
-- Metadados de Key Vaults, Storage Accounts, VMs, NSGs e IPs publicos.
-- Dados Entra ID/Graph permitidos ao token usado, incluindo usuario atual, grupos, objetos possuidos, roles administrativas e principals privilegiados.
-- Relatorios em Markdown e JSON para revisao humana ou automacao.
+- Contexto de autenticação Azure e Microsoft Graph.
+- Subscriptions visíveis e roles RBAC efetivas.
+- Inventário de recursos Azure visíveis pela conta.
+- Metadados de Key Vaults, Storage Accounts, VMs, NSGs e IPs públicos.
+- Dados Entra ID/Graph permitidos ao token usado, incluindo usuário atual, grupos, objetos possuídos, roles administrativas e principals privilegiados.
+- Relatórios em Markdown e JSON para revisão humana ou automação.
 
-Por padrao, o toolkit nao coleta valores de segredos, chaves privadas, conteudo de blobs, dados de bancos ou payloads de maquinas virtuais.
+Por padrão, o toolkit não coleta valores de segredos, chaves privadas, conteúdo de blobs, dados de bancos ou payloads de máquinas virtuais.
 
-## Saidas
+## Saídas
 
-Cada execucao cria uma pasta em `.\reports\azure-access-review-<timestamp>` com:
+Cada execução cria uma pasta em `.\reports\azure-access-review-<timestamp>` com:
 
-- `azure-access-review.json`: resultado estruturado para automacao ou envio a uma IA.
-- `azure-access-review.md`: relatorio humano com resumo executivo, achados e evidencias.
+- `azure-access-review.json`: resultado estruturado para automação ou envio a uma IA.
+- `azure-access-review.md`: relatório humano com resumo executivo, achados e evidências.
 - `raw\*.json`: respostas brutas normalizadas por coletor.
-- `run-metadata.json`: parametros, timestamps e versoes relevantes.
+- `run-metadata.json`: parâmetros, timestamps e versões relevantes.
 
 ## Requisitos
 
 - PowerShell 5.1+ ou PowerShell 7+.
-- Modulos PowerShell para coleta Azure:
+- Módulos PowerShell para coleta Azure:
   - `Az.Accounts`
   - `Az.Resources`
   - `Az.KeyVault`
   - `Az.Storage`
   - `Az.Compute`
   - `Az.Network`
-- Modulos Microsoft Graph somente se usar `-GraphMode Sdk`:
+- Módulos Microsoft Graph somente se usar `-GraphMode Sdk`:
   - `Microsoft.Graph.Authentication`
   - `Microsoft.Graph.Users`
   - `Microsoft.Graph.Groups`
   - `Microsoft.Graph.Applications`
   - `Microsoft.Graph.Identity.DirectoryManagement`
 
-Instalacao sugerida:
+Instalação sugerida:
 
 ```powershell
 Install-Module Az -Scope CurrentUser
 Install-Module Microsoft.Graph -Scope CurrentUser
 ```
 
-Se a organizacao usa repositorio interno de modulos PowerShell, instale os mesmos modulos a partir da fonte aprovada.
+Esses comandos instalam módulos "rollup": `Az` traz os submódulos Azure usados pelo script, como `Az.Accounts`, `Az.Resources`, `Az.KeyVault`, `Az.Storage`, `Az.Compute` e `Az.Network`; `Microsoft.Graph` traz os submódulos do SDK, incluindo os usados pelo modo `-GraphMode Sdk`. Isso depende de acesso à PSGallery e resolução normal de dependências pelo PowerShellGet/PSResourceGet.
 
-## Uso rapido
+Em ambientes restritos, você pode instalar somente os submódulos necessários:
+
+```powershell
+Install-Module Az.Accounts,Az.Resources,Az.KeyVault,Az.Storage,Az.Compute,Az.Network -Scope CurrentUser
+Install-Module Microsoft.Graph.Authentication,Microsoft.Graph.Users,Microsoft.Graph.Groups,Microsoft.Graph.Applications,Microsoft.Graph.Identity.DirectoryManagement -Scope CurrentUser
+```
+
+Se a organização usa repositório interno de módulos PowerShell, instale os mesmos módulos a partir da fonte aprovada.
+
+## Uso rápido
 
 Execute a partir da pasta do projeto:
 
@@ -58,17 +67,17 @@ Execute a partir da pasta do projeto:
 .\Invoke-AzureAccessReview.ps1
 ```
 
-Se a maquina bloquear scripts pela Execution Policy local, execute em um processo temporario com bypass:
+Se a máquina bloquear scripts pela Execution Policy local, execute em um processo temporário com bypass:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Invoke-AzureAccessReview.ps1
 ```
 
-Por padrao, o script cria a saida em `.\reports` e usa `-GraphMode Auto`.
+Por padrão, o script cria a saída em `.\reports` e usa `-GraphMode Auto`.
 
 ## Exemplos comuns
 
-Selecionar tenants ou subscriptions especificos:
+Selecionar tenants ou subscriptions específicos:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 `
@@ -76,7 +85,7 @@ Selecionar tenants ou subscriptions especificos:
   -SubscriptionIds "00000000-0000-0000-0000-000000000000"
 ```
 
-Alterar a pasta de saida:
+Alterar a pasta de saída:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -OutputRoot ".\reports\cliente-a"
@@ -94,33 +103,33 @@ Executar apenas coleta Azure/RBAC, sem Graph:
 .\Invoke-AzureAccessReview.ps1 -SkipGraph
 ```
 
-Reutilizar somente sessoes ja existentes, sem abrir login interativo:
+Reutilizar somente sessões já existentes, sem abrir login interativo:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -UseExistingSessionOnly
 ```
 
-Forcar novo login interativo:
+Forçar novo login interativo:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -ForceLogin
 ```
 
-Usar device code quando o browser interativo nao abrir corretamente:
+Usar device code quando o browser interativo não abrir corretamente:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -ForceLogin -UseDeviceCode
 ```
 
-Exigir que o token Graph pertenca a uma conta especifica:
+Exigir que o token Graph pertença a uma conta específica:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -GraphMode Rest -ExpectedAccountUpn usuario@dominio.gov.br
 ```
 
-## Enumeracao profunda
+## Enumeração profunda
 
-Use `-DeepEnumerate` para tentativas read-only mais detalhadas quando a conta tiver permissao:
+Use `-DeepEnumerate` para tentativas read-only mais detalhadas quando a conta tiver permissão:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -DeepEnumerate
@@ -129,10 +138,10 @@ Use `-DeepEnumerate` para tentativas read-only mais detalhadas quando a conta ti
 Esse modo pode tentar:
 
 - listar containers, filas e tabelas de Storage Accounts usando a conta conectada;
-- enriquecer principals privilegiados com detalhes de usuario;
-- consultar grupos, dispositivos registrados e dispositivos possuidos;
-- consultar metodos de autenticacao cadastrados sem coletar segredos;
-- listar assignments ativos e elegiveis de roles administrativas.
+- enriquecer principals privilegiados com detalhes de usuário;
+- consultar grupos, dispositivos registrados e dispositivos possuídos;
+- consultar métodos de autenticação cadastrados sem coletar segredos;
+- listar assignments ativos e elegíveis de roles administrativas.
 
 Para controlar volume de principals privilegiados:
 
@@ -140,15 +149,15 @@ Para controlar volume de principals privilegiados:
 .\Invoke-AzureAccessReview.ps1 -GraphMode Rest -DeepEnumerate -PrivilegedAccountLimit 100
 ```
 
-Use `-DeepEnumerate` somente em janelas aprovadas de auditoria, pois mesmo operacoes read-only podem gerar logs, alertas e custos em ambientes grandes.
+Use `-DeepEnumerate` somente em janelas aprovadas de auditoria, pois mesmo operações read-only podem gerar logs, alertas e custos em ambientes grandes.
 
 ## Modos Microsoft Graph
 
-O parametro `-GraphMode` aceita:
+O parâmetro `-GraphMode` aceita:
 
-- `Auto`: prefere importacao do Graph Explorer quando um arquivo for informado, depois REST, depois SDK.
-- `Rest`: usa `Invoke-RestMethod` direto contra Microsoft Graph, sem carregar modulos `Microsoft.Graph.*`.
-- `Sdk`: usa os modulos PowerShell `Microsoft.Graph.*`.
+- `Auto`: prefere importação do Graph Explorer quando um arquivo for informado, depois REST, depois SDK.
+- `Rest`: usa `Invoke-RestMethod` direto contra Microsoft Graph, sem carregar módulos `Microsoft.Graph.*`.
+- `Sdk`: usa os módulos PowerShell `Microsoft.Graph.*`.
 - `ExplorerExport`: importa respostas salvas manualmente a partir do Graph Explorer.
 
 ### REST com Az.Accounts
@@ -157,13 +166,13 @@ O parametro `-GraphMode` aceita:
 .\Invoke-AzureAccessReview.ps1 -GraphMode Rest
 ```
 
-Para reduzir risco de herdar login anterior, quando o script nao e executado com `-UseExistingSessionOnly`, ele limpa o contexto Az do processo antes de autenticar. Se voce quiser preservar explicitamente o contexto Az do processo:
+Para reduzir risco de herdar login anterior, quando o script não é executado com `-UseExistingSessionOnly`, ele limpa o contexto Az do processo antes de autenticar. Se você quiser preservar explicitamente o contexto Az do processo:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -GraphMode Rest -PreserveAzContext
 ```
 
-Para limpar tambem antes de obter token Graph:
+Para limpar também antes de obter token Graph:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -GraphMode Rest -ForceLogin -UseDeviceCode -ClearAzContext
@@ -171,15 +180,15 @@ Para limpar tambem antes de obter token Graph:
 
 ### REST com token delegado informado
 
-Tambem e possivel fornecer um token delegado aprovado pelo analista. O token nao e persistido no relatorio.
+Também é possível fornecer um token delegado aprovado pelo analista. O token não é persistido no relatório.
 
-Via parametro:
+Via parâmetro:
 
 ```powershell
 .\Invoke-AzureAccessReview.ps1 -GraphMode Rest -GraphAccessToken "<token-delegado-aprovado>"
 ```
 
-Via variavel de ambiente:
+Via variável de ambiente:
 
 ```powershell
 $env:AZURE_ACCESS_REVIEW_GRAPH_TOKEN = "<token-delegado-aprovado>"
@@ -197,7 +206,7 @@ Importar respostas do Graph Explorer:
   -GraphExplorerExportPath .\examples\graph-explorer-export.sample.json
 ```
 
-Modelo minimo:
+Modelo mínimo:
 
 ```json
 {
@@ -221,42 +230,42 @@ Endpoints sugeridos para coletar no Graph Explorer:
 - `/applications?$top=100&$select=id,appId,displayName,signInAudience,publisherDomain`
 - `/servicePrincipals?$top=100&$select=id,appId,displayName,servicePrincipalType,accountEnabled`
 
-## Parametros principais
+## Parâmetros principais
 
-| Parametro | Descricao |
+| Parâmetro | Descrição |
 | --- | --- |
 | `-TenantIds` | Filtra tenants usados na coleta. |
 | `-SubscriptionIds` | Filtra subscriptions usadas na coleta Azure/RBAC. |
-| `-OutputRoot` | Define a pasta base de saida. Padrao: `.\reports`. |
-| `-DeepEnumerate` | Habilita enumeracao read-only mais detalhada. |
-| `-UseExistingSessionOnly` | Nao abre login; usa apenas sessoes existentes. |
-| `-ForceLogin` | Forca chamada de login interativo ou device code. |
+| `-OutputRoot` | Define a pasta base de saída. Padrão: `.\reports`. |
+| `-DeepEnumerate` | Habilita enumeração read-only mais detalhada. |
+| `-UseExistingSessionOnly` | Não abre login; usa apenas sessões existentes. |
+| `-ForceLogin` | Força chamada de login interativo ou device code. |
 | `-UseDeviceCode` | Usa device code com `Connect-AzAccount`. |
-| `-ClearAzContext` | Limpa o contexto Az do processo antes da autenticacao/token. |
+| `-ClearAzContext` | Limpa o contexto Az do processo antes da autenticação/token. |
 | `-PreserveAzContext` | Preserva contexto Az existente no processo. |
-| `-ExpectedAccountUpn` | Falha se o token Graph nao pertencer ao UPN esperado. |
+| `-ExpectedAccountUpn` | Falha se o token Graph não pertencer ao UPN esperado. |
 | `-SkipGraph` | Ignora coletores Microsoft Graph/Entra ID. |
-| `-SkipResourceEnumeration` | Ignora inventario de recursos Azure. |
-| `-PrivilegedAccountLimit` | Limita principals privilegiados retornados. Padrao: `200`. |
+| `-SkipResourceEnumeration` | Ignora inventário de recursos Azure. |
+| `-PrivilegedAccountLimit` | Limita principals privilegiados retornados. Padrão: `200`. |
 | `-GraphMode` | Seleciona `Auto`, `Rest`, `Sdk` ou `ExplorerExport`. |
 | `-GraphAccessToken` | Token Graph delegado fornecido diretamente. |
 | `-GraphExplorerExportPath` | Caminho para JSON exportado do Graph Explorer. |
-| `-GraphBaseUri` | Base URI do Graph. Padrao: `https://graph.microsoft.com/v1.0`. |
+| `-GraphBaseUri` | Base URI do Graph. Padrão: `https://graph.microsoft.com/v1.0`. |
 
-## Interpretacao dos resultados
+## Interpretação dos resultados
 
-O campo `capability_summary` no JSON e a secao "Resumo de capacidades" no Markdown respondem:
+O campo `capability_summary` no JSON e a seção "Resumo de capacidades" no Markdown respondem:
 
 - O que a conta consegue ver?
-- Em quais subscriptions e escopos ela tem permissoes?
-- Ela aparenta conseguir modificar IAM, recursos, segredos, storage ou computacao?
+- Em quais subscriptions e escopos ela tem permissões?
+- Ela aparenta conseguir modificar IAM, recursos, segredos, storage ou computação?
 - Quais controles devem ser revisados primeiro?
 
-O relatorio tambem inclui `account_summary` com a conta avaliada, tenant, object ID, conta do contexto Az, subscription ativa, app/client ID do token Graph e escopos do token quando essas informacoes puderem ser inferidas sem gravar o token.
+O relatório também inclui `account_summary` com a conta avaliada, tenant, object ID, conta do contexto Az, subscription ativa, app/client ID do token Graph e escopos do token quando essas informações puderem ser inferidas sem gravar o token.
 
-## Observacoes de seguranca
+## Observações de segurança
 
-- Execute somente com autorizacao e em janelas aprovadas de auditoria.
-- O toolkit prioriza metadados e permissoes efetivas; ele nao deve ser usado para extrair segredos ou dados de negocio.
-- Os achados automaticos sao triagem inicial. Revise o JSON e valide com o contexto do tenant antes de tomar decisoes de remediacao.
-- Falhas em chamadas Graph normalmente indicam falta de escopo delegado, consentimento, politica de tenant ou bloqueio por aplicacao.
+- Execute somente com autorização e em janelas aprovadas de auditoria.
+- O toolkit prioriza metadados e permissões efetivas; ele não deve ser usado para extrair segredos ou dados de negócio.
+- Os achados automáticos são triagem inicial. Revise o JSON e valide com o contexto do tenant antes de tomar decisões de remediação.
+- Falhas em chamadas Graph normalmente indicam falta de escopo delegado, consentimento, política de tenant ou bloqueio por aplicação.
