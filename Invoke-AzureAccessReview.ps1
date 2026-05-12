@@ -13,6 +13,8 @@ param(
     [switch]$SkipGraph,
     [switch]$SkipResourceEnumeration,
     [int]$PrivilegedAccountLimit = 200,
+    [switch]$EnumerateAllUsers,
+    [int]$DirectorySampleSize = 100,
     [ValidateSet("Auto","Rest","Sdk","ExplorerExport")]
     [string]$GraphMode = "Auto",
     [string]$GraphAccessToken,
@@ -125,7 +127,9 @@ if (-not $SkipGraph -and $graphExplorerExportAvailable -and ($GraphMode -eq "Exp
 }
 elseif (-not $SkipGraph -and $graphRestAvailable -and ($GraphMode -eq "Rest" -or ($GraphMode -eq "Auto" -and $graphRestAvailable))) {
     Invoke-AccessReviewCollector -Name "EntraGraphRest" -State $state -ScriptBlock {
-        & (Join-Path $scriptRoot "collectors\Get-EntraGraphRestAccess.ps1") -State $state -TenantIds $TenantIds -UseExistingSessionOnly:$UseExistingSessionOnly -ForceLogin:$ForceLogin -UseDeviceCode:$UseDeviceCode -ClearAzContext:$effectiveClearAzContext -ExpectedAccountUpn $ExpectedAccountUpn -GraphAccessToken $GraphAccessToken -GraphBaseUri $GraphBaseUri -DeepEnumerate:$DeepEnumerate -PrivilegedAccountLimit $PrivilegedAccountLimit
+        $graphTokenProvided = [bool]($GraphAccessToken -or $env:AZURE_ACCESS_REVIEW_GRAPH_TOKEN)
+        $reuseAzSessionForGraph = [bool]($azAvailable -and -not $graphTokenProvided)
+        & (Join-Path $scriptRoot "collectors\Get-EntraGraphRestAccess.ps1") -State $state -TenantIds $TenantIds -UseExistingSessionOnly:($UseExistingSessionOnly -or $reuseAzSessionForGraph) -ForceLogin:($ForceLogin -and -not $reuseAzSessionForGraph) -UseDeviceCode:$UseDeviceCode -ClearAzContext:($effectiveClearAzContext -and -not $reuseAzSessionForGraph) -ExpectedAccountUpn $ExpectedAccountUpn -GraphAccessToken $GraphAccessToken -GraphBaseUri $GraphBaseUri -DeepEnumerate:$DeepEnumerate -PrivilegedAccountLimit $PrivilegedAccountLimit -EnumerateAllUsers:$EnumerateAllUsers -DirectorySampleSize $DirectorySampleSize
     }
 }
 elseif (-not $SkipGraph -and ($GraphMode -eq "Sdk" -or ($GraphMode -eq "Auto" -and $graphSdkAvailable))) {
@@ -167,6 +171,8 @@ $metadata = [ordered]@{
         skip_graph = [bool]$SkipGraph
         skip_resource_enumeration = [bool]$SkipResourceEnumeration
         privileged_account_limit = $PrivilegedAccountLimit
+        enumerate_all_users = [bool]$EnumerateAllUsers
+        directory_sample_size = $DirectorySampleSize
         graph_mode = $GraphMode
         graph_base_uri = $GraphBaseUri
         graph_access_token_supplied = [bool]$GraphAccessToken

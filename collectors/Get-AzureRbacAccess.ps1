@@ -7,6 +7,7 @@ param(
 
 Import-Module Az.Accounts -ErrorAction Stop
 Import-Module Az.Resources -ErrorAction Stop
+$WarningPreference = "SilentlyContinue"
 
 $subscriptions = @()
 try {
@@ -32,7 +33,7 @@ foreach ($subscription in $subscriptions) {
         Set-AzContext -SubscriptionId $subscription.Id -TenantId $subscription.TenantId -ErrorAction Stop | Out-Null
 
         $assignments = @(Get-AzRoleAssignment -Scope "/subscriptions/$($subscription.Id)" -ErrorAction SilentlyContinue)
-        $roleDefinitions = @(Get-AzRoleDefinition -ErrorAction SilentlyContinue)
+        $roleDefinitions = @(Get-AzRoleDefinition -ErrorAction SilentlyContinue -WarningAction SilentlyContinue)
         $resourceGroups = @(Get-AzResourceGroup -ErrorAction SilentlyContinue | Select-Object ResourceGroupName, Location, ProvisioningState, ResourceId)
 
         foreach ($assignment in $assignments) {

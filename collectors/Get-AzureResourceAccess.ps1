@@ -10,7 +10,7 @@ Import-Module Az.Resources -ErrorAction Stop
 Import-Module Az.KeyVault -ErrorAction SilentlyContinue
 Import-Module Az.Storage -ErrorAction SilentlyContinue
 Import-Module Az.Compute -ErrorAction SilentlyContinue
-Import-Module Az.Network -ErrorAction SilentlyContinue
+Import-Module Az.Network -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
 
 $subscriptions = @(Get-AzSubscription -ErrorAction SilentlyContinue)
 if ($SubscriptionIds) {

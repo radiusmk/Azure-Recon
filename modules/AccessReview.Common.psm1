@@ -135,6 +135,15 @@ function New-AccountSummary {
     }
 
     $activeContext = Get-ReviewValue -Object $Session -Name "active_context"
+    $activeAccount = if ($activeContext) { Get-ReviewValue -Object $activeContext -Name "Account" } else { $null }
+    $activeTenant = if ($activeContext) { Get-ReviewValue -Object $activeContext -Name "Tenant" } else { $null }
+    $activeSubscription = if ($activeContext) { Get-ReviewValue -Object $activeContext -Name "Subscription" } else { $null }
+    $azureContextAccount = if ($activeAccount -and (Get-ReviewValue -Object $activeAccount -Name "Id")) { Get-ReviewValue -Object $activeAccount -Name "Id" } else { $null }
+    $homeAccountId = if ($activeAccount) {
+        $accountExtendedProperties = Get-ReviewValue -Object $activeAccount -Name "ExtendedProperties"
+        if ($accountExtendedProperties) { Get-ReviewValue -Object $accountExtendedProperties -Name "HomeAccountId" } else { $null }
+    } else { $null }
+    $homeAccountObjectId = if ($homeAccountId -and $homeAccountId -match "^([0-9a-fA-F-]{36})\.") { $Matches[1] } else { $null }
 
     $currentUser = $null
     $tokenClaims = $null
@@ -144,13 +153,27 @@ function New-AccountSummary {
     }
 
     [ordered]@{
-        display_name = if (Get-ReviewValue -Object $currentUser -Name "displayName") { Get-ReviewValue -Object $currentUser -Name "displayName" } elseif (Get-ReviewValue -Object $tokenClaims -Name "name") { Get-ReviewValue -Object $tokenClaims -Name "name" } else { $null }
-        user_principal_name = if (Get-ReviewValue -Object $currentUser -Name "userPrincipalName") { Get-ReviewValue -Object $currentUser -Name "userPrincipalName" } elseif (Get-ReviewValue -Object $tokenClaims -Name "upn") { Get-ReviewValue -Object $tokenClaims -Name "upn" } elseif (Get-ReviewValue -Object $tokenClaims -Name "preferred_username") { Get-ReviewValue -Object $tokenClaims -Name "preferred_username" } else { $null }
-        user_id = if (Get-ReviewValue -Object $currentUser -Name "id") { Get-ReviewValue -Object $currentUser -Name "id" } elseif (Get-ReviewValue -Object $tokenClaims -Name "oid") { Get-ReviewValue -Object $tokenClaims -Name "oid" } else { $null }
-        tenant_id = if (Get-ReviewValue -Object $tokenClaims -Name "tid") { Get-ReviewValue -Object $tokenClaims -Name "tid" } elseif ($activeContext -and (Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Tenant") -Name "Id")) { Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Tenant") -Name "Id" } else { $null }
-        tenant_display = if ($activeContext -and (Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Tenant") -Name "Name")) { Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Tenant") -Name "Name" } else { $null }
-        azure_context_account = if ($activeContext -and (Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Account") -Name "Id")) { Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Account") -Name "Id" } else { $null }
-        azure_context_subscription = if ($activeContext -and (Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Subscription") -Name "Id")) { Get-ReviewValue -Object (Get-ReviewValue -Object $activeContext -Name "Subscription") -Name "Id" } else { $null }
+        display_name = if (Get-ReviewValue -Object $currentUser -Name "displayName") { Get-ReviewValue -Object $currentUser -Name "displayName" } elseif (Get-ReviewValue -Object $tokenClaims -Name "name") { Get-ReviewValue -Object $tokenClaims -Name "name" } elseif ($azureContextAccount) { $azureContextAccount } else { $null }
+        user_principal_name = if (Get-ReviewValue -Object $currentUser -Name "userPrincipalName") { Get-ReviewValue -Object $currentUser -Name "userPrincipalName" } elseif (Get-ReviewValue -Object $tokenClaims -Name "upn") { Get-ReviewValue -Object $tokenClaims -Name "upn" } elseif (Get-ReviewValue -Object $tokenClaims -Name "preferred_username") { Get-ReviewValue -Object $tokenClaims -Name "preferred_username" } elseif ($azureContextAccount) { $azureContextAccount } else { $null }
+        mail = if (Get-ReviewValue -Object $currentUser -Name "mail") { Get-ReviewValue -Object $currentUser -Name "mail" } elseif ($azureContextAccount -like "*@*") { $azureContextAccount } else { $null }
+        user_id = if (Get-ReviewValue -Object $currentUser -Name "id") { Get-ReviewValue -Object $currentUser -Name "id" } elseif (Get-ReviewValue -Object $tokenClaims -Name "oid") { Get-ReviewValue -Object $tokenClaims -Name "oid" } elseif ($homeAccountObjectId) { $homeAccountObjectId } else { $null }
+        account_enabled = if ($null -ne (Get-ReviewValue -Object $currentUser -Name "accountEnabled")) { [bool](Get-ReviewValue -Object $currentUser -Name "accountEnabled") } else { $null }
+        user_type = if (Get-ReviewValue -Object $currentUser -Name "userType") { Get-ReviewValue -Object $currentUser -Name "userType" } else { $null }
+        created_date_time = if (Get-ReviewValue -Object $currentUser -Name "createdDateTime") { Get-ReviewValue -Object $currentUser -Name "createdDateTime" } else { $null }
+        last_password_change_date_time = if (Get-ReviewValue -Object $currentUser -Name "lastPasswordChangeDateTime") { Get-ReviewValue -Object $currentUser -Name "lastPasswordChangeDateTime" } else { $null }
+        department = if (Get-ReviewValue -Object $currentUser -Name "department") { Get-ReviewValue -Object $currentUser -Name "department" } else { $null }
+        job_title = if (Get-ReviewValue -Object $currentUser -Name "jobTitle") { Get-ReviewValue -Object $currentUser -Name "jobTitle" } else { $null }
+        company_name = if (Get-ReviewValue -Object $currentUser -Name "companyName") { Get-ReviewValue -Object $currentUser -Name "companyName" } else { $null }
+        office_location = if (Get-ReviewValue -Object $currentUser -Name "officeLocation") { Get-ReviewValue -Object $currentUser -Name "officeLocation" } else { $null }
+        employee_id = if (Get-ReviewValue -Object $currentUser -Name "employeeId") { Get-ReviewValue -Object $currentUser -Name "employeeId" } else { $null }
+        employee_type = if (Get-ReviewValue -Object $currentUser -Name "employeeType") { Get-ReviewValue -Object $currentUser -Name "employeeType" } else { $null }
+        on_premises_sync_enabled = if ($null -ne (Get-ReviewValue -Object $currentUser -Name "onPremisesSyncEnabled")) { [bool](Get-ReviewValue -Object $currentUser -Name "onPremisesSyncEnabled") } else { $null }
+        on_premises_last_sync_date_time = if (Get-ReviewValue -Object $currentUser -Name "onPremisesLastSyncDateTime") { Get-ReviewValue -Object $currentUser -Name "onPremisesLastSyncDateTime" } else { $null }
+        on_premises_extension_attributes = if (Get-ReviewValue -Object $currentUser -Name "onPremisesExtensionAttributes") { Get-ReviewValue -Object $currentUser -Name "onPremisesExtensionAttributes" } else { $null }
+        tenant_id = if (Get-ReviewValue -Object $tokenClaims -Name "tid") { Get-ReviewValue -Object $tokenClaims -Name "tid" } elseif ($activeTenant -and (Get-ReviewValue -Object $activeTenant -Name "Id")) { Get-ReviewValue -Object $activeTenant -Name "Id" } else { $null }
+        tenant_display = if ($activeTenant -and (Get-ReviewValue -Object $activeTenant -Name "Name")) { Get-ReviewValue -Object $activeTenant -Name "Name" } else { $null }
+        azure_context_account = $azureContextAccount
+        azure_context_subscription = if ($activeSubscription -and (Get-ReviewValue -Object $activeSubscription -Name "Id")) { Get-ReviewValue -Object $activeSubscription -Name "Id" } else { $null }
         graph_token_app_id = if (Get-ReviewValue -Object $tokenClaims -Name "appid") { Get-ReviewValue -Object $tokenClaims -Name "appid" } elseif (Get-ReviewValue -Object $tokenClaims -Name "azp") { Get-ReviewValue -Object $tokenClaims -Name "azp" } else { $null }
         graph_token_scopes = if (Get-ReviewValue -Object $tokenClaims -Name "scp") { Get-ReviewValue -Object $tokenClaims -Name "scp" } else { $null }
         graph_token_roles = if (Get-ReviewValue -Object $tokenClaims -Name "roles") { @(Get-ReviewValue -Object $tokenClaims -Name "roles") } else { @() }

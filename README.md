@@ -103,6 +103,18 @@ Executar apenas coleta Azure/RBAC, sem Graph:
 .\Invoke-AzureAccessReview.ps1 -SkipGraph
 ```
 
+Enumerar todos os usuários visíveis do tenant e gravar a lista completa no JSON:
+
+```powershell
+.\Invoke-AzureAccessReview.ps1 -GraphMode Rest -EnumerateAllUsers
+```
+
+Controlar o tamanho da amostra padrão de usuários e grupos do tenant:
+
+```powershell
+.\Invoke-AzureAccessReview.ps1 -GraphMode Rest -DirectorySampleSize 250
+```
+
 Reutilizar somente sessões já existentes, sem abrir login interativo:
 
 ```powershell
@@ -150,6 +162,26 @@ Para controlar volume de principals privilegiados:
 ```
 
 Use `-DeepEnumerate` somente em janelas aprovadas de auditoria, pois mesmo operações read-only podem gerar logs, alertas e custos em ambientes grandes.
+
+## Enumeração de usuários e grupos do tenant
+
+No modo `-GraphMode Rest`, a coleta padrão tenta contabilizar quantos usuários e grupos do tenant podem ser enumerados pelo token usado e salva uma amostra limitada por `-DirectorySampleSize`, cujo padrão é `100`.
+
+A seção `tenant_directory` do JSON inclui:
+
+- total visível de usuários e grupos, quando o Graph retorna `@odata.count`;
+- amostra de usuários com propriedades como `displayName`, `userPrincipalName`, `mail`, `accountEnabled`, `userType`, `department`, `jobTitle`, `companyName`, `employeeId`, `employeeType` e `onPremisesExtensionAttributes`;
+- amostra de grupos com propriedades como `displayName`, `description`, `mail`, `securityEnabled`, `mailEnabled` e `groupTypes`;
+- probes indicando se é possível ler propriedades e relacionamentos adicionais de um usuário de amostra, incluindo grupos (`memberOf` e `transitiveMemberOf`), `customSecurityAttributes`, dispositivos registrados e métodos de autenticação;
+- lista completa de usuários apenas quando `-EnumerateAllUsers` for informado.
+
+Para enumerar todos os usuários visíveis:
+
+```powershell
+.\Invoke-AzureAccessReview.ps1 -GraphMode Rest -EnumerateAllUsers
+```
+
+Essa opção pode gerar arquivos grandes e aumentar o volume de chamadas ao Microsoft Graph em tenants maiores.
 
 ## Modos Microsoft Graph
 
@@ -247,6 +279,8 @@ Endpoints sugeridos para coletar no Graph Explorer:
 | `-SkipGraph` | Ignora coletores Microsoft Graph/Entra ID. |
 | `-SkipResourceEnumeration` | Ignora inventário de recursos Azure. |
 | `-PrivilegedAccountLimit` | Limita principals privilegiados retornados. Padrão: `200`. |
+| `-EnumerateAllUsers` | Enumera todos os usuários visíveis do tenant e salva em `tenant_directory.all_users`. |
+| `-DirectorySampleSize` | Define o tamanho da amostra padrão de usuários e grupos do tenant. Padrão: `100`. |
 | `-GraphMode` | Seleciona `Auto`, `Rest`, `Sdk` ou `ExplorerExport`. |
 | `-GraphAccessToken` | Token Graph delegado fornecido diretamente. |
 | `-GraphExplorerExportPath` | Caminho para JSON exportado do Graph Explorer. |

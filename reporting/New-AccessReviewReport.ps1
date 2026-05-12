@@ -51,6 +51,14 @@ elseif ($State.Data.Contains("entra") -and $State.Data.entra -is [System.Collect
     $privilegedAccounts = $State.Data.entra["privileged_accounts"]
 }
 
+$tenantDirectory = $null
+if ($State.Data.Contains("entra") -and $State.Data.entra.PSObject.Properties.Name -contains "tenant_directory") {
+    $tenantDirectory = $State.Data.entra.tenant_directory
+}
+elseif ($State.Data.Contains("entra") -and $State.Data.entra -is [System.Collections.IDictionary] -and $State.Data.entra.Contains("tenant_directory")) {
+    $tenantDirectory = $State.Data.entra["tenant_directory"]
+}
+
 $report = [ordered]@{
     schema_version = "1.0"
     generated_at_utc = $State.CompletedAtUtc
@@ -83,6 +91,8 @@ $md.Add("- Recursos Azure visiveis: $($capabilitySummary.resource_count_visible)
 $md.Add("- Roles Azure observadas: $((@($roles) -join ', '))") | Out-Null
 $md.Add("- Coleta Graph/Entra ID executada: $($capabilitySummary.graph_collected)") | Out-Null
 $md.Add("- Enumeracao profunda habilitada: $($capabilitySummary.deep_enumeration)") | Out-Null
+$md.Add("- Usuarios do tenant enumeraveis: $(if ($tenantDirectory -and $null -ne $tenantDirectory.user_count_visible) { $tenantDirectory.user_count_visible } else { 'Nao coletado' })") | Out-Null
+$md.Add("- Grupos do tenant enumeraveis: $(if ($tenantDirectory -and $null -ne $tenantDirectory.group_count_visible) { $tenantDirectory.group_count_visible } else { 'Nao coletado' })") | Out-Null
 $md.Add("- Conta avaliada: $(if ($accountSummary.user_principal_name) { $accountSummary.user_principal_name } elseif ($accountSummary.azure_context_account) { $accountSummary.azure_context_account } else { 'Nao identificada' })") | Out-Null
 $md.Add("- Tenant avaliado: $(if ($accountSummary.tenant_id) { $accountSummary.tenant_id } else { 'Nao identificado' })") | Out-Null
 $md.Add("") | Out-Null
@@ -90,7 +100,20 @@ $md.Add("## Conta Identificada") | Out-Null
 $md.Add("") | Out-Null
 $md.Add("- Nome: $(if ($accountSummary.display_name) { $accountSummary.display_name } else { 'Nao identificado' })") | Out-Null
 $md.Add("- UPN/login: $(if ($accountSummary.user_principal_name) { $accountSummary.user_principal_name } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Email: $(if ($accountSummary.mail) { $accountSummary.mail } else { 'Nao identificado' })") | Out-Null
 $md.Add("- Object ID: $(if ($accountSummary.user_id) { $accountSummary.user_id } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Conta habilitada: $(if ($null -ne $accountSummary.account_enabled) { $accountSummary.account_enabled } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Tipo de usuario: $(if ($accountSummary.user_type) { $accountSummary.user_type } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Criada em: $(if ($accountSummary.created_date_time) { $accountSummary.created_date_time } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Ultima troca de senha: $(if ($accountSummary.last_password_change_date_time) { $accountSummary.last_password_change_date_time } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Departamento: $(if ($accountSummary.department) { $accountSummary.department } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Cargo: $(if ($accountSummary.job_title) { $accountSummary.job_title } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Empresa: $(if ($accountSummary.company_name) { $accountSummary.company_name } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Escritorio/localizacao: $(if ($accountSummary.office_location) { $accountSummary.office_location } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Employee ID: $(if ($accountSummary.employee_id) { $accountSummary.employee_id } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Employee type: $(if ($accountSummary.employee_type) { $accountSummary.employee_type } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Sincronizada do on-premises: $(if ($null -ne $accountSummary.on_premises_sync_enabled) { $accountSummary.on_premises_sync_enabled } else { 'Nao identificado' })") | Out-Null
+$md.Add("- Ultima sincronizacao on-premises: $(if ($accountSummary.on_premises_last_sync_date_time) { $accountSummary.on_premises_last_sync_date_time } else { 'Nao identificado' })") | Out-Null
 $md.Add("- Tenant ID: $(if ($accountSummary.tenant_id) { $accountSummary.tenant_id } else { 'Nao identificado' })") | Out-Null
 $md.Add("- Conta no contexto Az: $(if ($accountSummary.azure_context_account) { $accountSummary.azure_context_account } else { 'Nao identificada' })") | Out-Null
 $md.Add("- Subscription ativa no contexto Az: $(if ($accountSummary.azure_context_subscription) { $accountSummary.azure_context_subscription } else { 'Nao identificada' })") | Out-Null
@@ -130,6 +153,48 @@ if ($privilegedAccounts) {
     if ($privilegedAccounts.returned_principal_count -gt 25) {
         $md.Add("") | Out-Null
         $md.Add("A tabela mostra os primeiros 25 principals privilegiados; use o JSON para a lista completa.") | Out-Null
+    }
+}
+
+if ($tenantDirectory) {
+    $md.Add("") | Out-Null
+    $md.Add("## Diretorio Entra ID") | Out-Null
+    $md.Add("") | Out-Null
+    $md.Add("- Usuarios enumeraveis: $(if ($null -ne $tenantDirectory.user_count_visible) { $tenantDirectory.user_count_visible } else { 'Nao identificado' })") | Out-Null
+    $md.Add("- Grupos enumeraveis: $(if ($null -ne $tenantDirectory.group_count_visible) { $tenantDirectory.group_count_visible } else { 'Nao identificado' })") | Out-Null
+    $md.Add("- Amostra de usuarios retornada: $($tenantDirectory.users_sample_count)") | Out-Null
+    $md.Add("- Amostra de grupos retornada: $($tenantDirectory.groups_sample_count)") | Out-Null
+    $md.Add("- Enumeracao completa de usuarios solicitada: $($tenantDirectory.all_users_enumeration_requested)") | Out-Null
+    if ($tenantDirectory.all_users_enumeration_requested) {
+        $md.Add("- Usuarios retornados na enumeracao completa: $($tenantDirectory.all_users_returned_count)") | Out-Null
+        $md.Add("- Enumeracao completa truncada: $($tenantDirectory.all_users_truncated)") | Out-Null
+    }
+    $md.Add("") | Out-Null
+    $md.Add("Propriedades de usuario solicitadas na amostra:") | Out-Null
+    foreach ($propertyName in @($tenantDirectory.user_select_properties_requested)) {
+        $md.Add("- ``$propertyName``") | Out-Null
+    }
+    $md.Add("") | Out-Null
+    $md.Add("Probes de propriedades e relacionamentos legiveis:") | Out-Null
+    $md.Add("") | Out-Null
+    $md.Add("| Probe | Legivel | Propriedades retornadas | Erro |") | Out-Null
+    $md.Add("| --- | --- | --- | --- |") | Out-Null
+    foreach ($probe in @($tenantDirectory.readable_property_probes)) {
+        $probeError = if ($probe.error) { $probe.error.Replace("|", "\|") } else { "" }
+        $available = @($probe.available_properties) -join ", "
+        $md.Add("| $($probe.name) | $($probe.readable) | $available | $probeError |") | Out-Null
+    }
+    $md.Add("") | Out-Null
+    $md.Add("Amostra de usuarios:") | Out-Null
+    $md.Add("") | Out-Null
+    $md.Add("| Nome | UPN | Tipo | Habilitada | Departamento | Cargo |") | Out-Null
+    $md.Add("| --- | --- | --- | --- | --- | --- |") | Out-Null
+    foreach ($user in @($tenantDirectory.users_sample | Select-Object -First 25)) {
+        $md.Add("| $($user.displayName) | $($user.userPrincipalName) | $($user.userType) | $($user.accountEnabled) | $($user.department) | $($user.jobTitle) |") | Out-Null
+    }
+    if ($tenantDirectory.users_sample_count -gt 25) {
+        $md.Add("") | Out-Null
+        $md.Add("A tabela mostra os primeiros 25 usuarios da amostra; use o JSON para a amostra completa.") | Out-Null
     }
 }
 $md.Add("") | Out-Null

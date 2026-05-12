@@ -10,7 +10,9 @@ param(
     [string]$GraphAccessToken,
     [string]$GraphBaseUri = "https://graph.microsoft.com/v1.0",
     [switch]$DeepEnumerate,
-    [int]$PrivilegedAccountLimit = 200
+    [int]$PrivilegedAccountLimit = 200,
+    [switch]$EnumerateAllUsers,
+    [int]$DirectorySampleSize = 100
 )
 
 $tokenSource = "provided_parameter"
@@ -181,7 +183,8 @@ function Invoke-GraphRestCollection {
         [int]$MaxPages = 10
     )
 
-    $uri = if ($Path -like "https://*") { $Path } else { "$GraphBaseUri$Path" }
+    $originalUri = if ($Path -like "https://*") { [string]$Path } else { [string]::Concat($GraphBaseUri, $Path) }
+    $uri = $originalUri
     $items = New-Object System.Collections.Generic.List[object]
     $pageCount = 0
 
@@ -208,9 +211,9 @@ function Invoke-GraphRestCollection {
 
         return [pscustomobject]@{
             name = $Name
-            uri = if ($Path -like "https://*") { $Path } else { "$GraphBaseUri$Path" }
+            uri = $originalUri
             status = "Succeeded"
-            data = @($items)
+            data = @($items | ForEach-Object { $_ })
             page_count = $pageCount
             truncated = [bool](-not [string]::IsNullOrWhiteSpace($uri))
             error = $null
@@ -219,9 +222,9 @@ function Invoke-GraphRestCollection {
     catch {
         return [pscustomobject]@{
             name = $Name
-            uri = if ($Path -like "https://*") { $Path } else { "$GraphBaseUri$Path" }
+            uri = $originalUri
             status = "Failed"
-            data = @($items)
+            data = @($items | ForEach-Object { $_ })
             page_count = $pageCount
             truncated = $false
             error = $_.Exception.Message
@@ -229,12 +232,163 @@ function Invoke-GraphRestCollection {
     }
 }
 
+function Get-GraphCountFromCollectionResult {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]$Result
+    )
+
+    if ($null -eq $Result -or $Result.status -ne "Succeeded" -or $null -eq $Result.data) {
+        return $null
+    }
+
+    if ($Result.data.PSObject.Properties.Name -contains "@odata.count") {
+        return [int]$Result.data.'@odata.count'
+    }
+
+    return $null
+}
+
+function Get-ObjectPropertyValue {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]$Object,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+
+    if ($Object -is [System.Collections.IDictionary] -and $Object.Contains($Name)) {
+        return $Object[$Name]
+    }
+
+    if ($Object.PSObject.Properties.Name -contains $Name) {
+        return $Object.$Name
+    }
+
+    return $null
+}
+
+function Get-GraphCollectionValue {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]$Result
+    )
+
+    if ($null -eq $Result -or $Result.status -ne "Succeeded" -or $null -eq $Result.data) {
+        return @()
+    }
+
+    if ($Result.data.PSObject.Properties.Name -contains "value") {
+        return @($Result.data.value)
+    }
+
+    return @($Result.data)
+}
+
+function Invoke-GraphReadableProbe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Path,
+        [string[]]$ExpectedProperties = @(),
+        [switch]$Collection
+    )
+
+    $result = if ($Collection) {
+        Invoke-GraphRestCollectionSafe -Name $Name -Path $Path -MaxPages 1
+    }
+    else {
+        Invoke-GraphRestGet -Name $Name -Path $Path
+    }
+
+    $availableProperties = @()
+    if ($result.status -eq "Succeeded" -and $null -ne $result.data) {
+        $target = $result.data
+        if ($Collection) {
+            $values = @(Get-GraphCollectionValue -Result $result)
+            if ($values.Count -gt 0) {
+                $target = $values[0]
+            }
+        }
+
+        foreach ($propertyName in $ExpectedProperties) {
+            if ($target.PSObject.Properties.Name -contains $propertyName) {
+                $availableProperties += $propertyName
+            }
+        }
+    }
+
+    [pscustomobject]@{
+        name = $Name
+        uri = $result.uri
+        status = $result.status
+        readable = [bool]($result.status -eq "Succeeded")
+        expected_properties = @($ExpectedProperties)
+        available_properties = @($availableProperties)
+        error = $result.error
+    }
+}
+
+function Invoke-GraphRestCollectionSafe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Path,
+        [int]$MaxPages = 10
+    )
+
+    try {
+        return Invoke-GraphRestCollection -Name $Name -Path $Path -MaxPages $MaxPages
+    }
+    catch {
+        return [pscustomobject]@{
+            name = $Name
+            uri = if ($Path -like "https://*") { $Path } else { "$GraphBaseUri$Path" }
+            status = "Failed"
+            data = @()
+            page_count = 0
+            truncated = $false
+            error = $_.Exception.Message
+        }
+    }
+}
+
+$userSelectFields = @(
+    "id",
+    "displayName",
+    "userPrincipalName",
+    "mail",
+    "accountEnabled",
+    "userType",
+    "createdDateTime",
+    "lastPasswordChangeDateTime",
+    "onPremisesSyncEnabled",
+    "onPremisesLastSyncDateTime",
+    "department",
+    "jobTitle",
+    "companyName",
+    "officeLocation",
+    "mobilePhone",
+    "businessPhones",
+    "employeeId",
+    "employeeType",
+    "onPremisesExtensionAttributes"
+)
+$groupSelectFields = @("id", "displayName", "description", "mail", "securityEnabled", "mailEnabled", "groupTypes", "createdDateTime")
+$meSelectFields = @("id", "displayName", "userPrincipalName", "mail", "accountEnabled", "createdDateTime", "userType")
+$meSelect = $meSelectFields -join ","
+$userSelect = $userSelectFields -join ","
+$groupSelect = $groupSelectFields -join ","
+
 $requests = @(
-    @{ name = "me"; path = "/me?`$select=id,displayName,userPrincipalName,accountEnabled,createdDateTime,userType" },
+    @{ name = "me"; path = "/me?`$select=$meSelect" },
     @{ name = "organization"; path = "/organization?`$select=id,displayName,verifiedDomains" },
     @{ name = "memberOf"; path = "/me/memberOf?`$top=100&`$select=id,displayName,description" },
     @{ name = "ownedObjects"; path = "/me/ownedObjects?`$top=100&`$select=id,displayName,appId" },
-    @{ name = "directoryRoles"; path = "/directoryRoles?`$top=100&`$select=id,displayName,description,roleTemplateId" },
+    @{ name = "directoryRoles"; path = "/directoryRoles?`$top=100" },
     @{ name = "applications"; path = "/applications?`$top=100&`$select=id,appId,displayName,signInAudience,publisherDomain" },
     @{ name = "servicePrincipals"; path = "/servicePrincipals?`$top=100&`$select=id,appId,displayName,servicePrincipalType,accountEnabled" }
 )
@@ -271,11 +425,112 @@ $directoryRoles = Get-GraphResponseValue -Responses $responses -Name "directoryR
 $applications = Get-GraphResponseValue -Responses $responses -Name "applications"
 $servicePrincipals = Get-GraphResponseValue -Responses $responses -Name "servicePrincipals"
 
+$currentUserForReport = $me
+$currentUserId = Get-ObjectPropertyValue -Object $me -Name "id"
+if (-not [string]::IsNullOrWhiteSpace($currentUserId)) {
+    $meExtendedResult = Invoke-GraphRestGet -Name "meExtended" -Path "/users/${currentUserId}?`$select=$userSelect"
+    if ($meExtendedResult.status -eq "Succeeded" -and $null -ne $meExtendedResult.data) {
+        $currentUserForReport = $meExtendedResult.data
+        $responses += $meExtendedResult
+    }
+    else {
+        $responses += $meExtendedResult
+    }
+}
+
+$safeDirectorySampleSize = [Math]::Max(1, [Math]::Min($DirectorySampleSize, 999))
+$usersSampleResult = Invoke-GraphRestGet -Name "tenantUsersSample" -Path "/users?`$count=true&`$top=$safeDirectorySampleSize&`$select=$userSelect"
+$groupsSampleResult = Invoke-GraphRestGet -Name "tenantGroupsSample" -Path "/groups?`$count=true&`$top=$safeDirectorySampleSize&`$select=$groupSelect"
+$tenantUsersSample = Get-GraphCollectionValue -Result $usersSampleResult
+$tenantGroupsSample = Get-GraphCollectionValue -Result $groupsSampleResult
+
+$allUsersResult = $null
+$allUsers = @()
+if ($EnumerateAllUsers) {
+    $allUsersResult = Invoke-GraphRestCollection -Name "tenantUsersAll" -Path "/users?`$top=999&`$select=$userSelect" -MaxPages ([int]::MaxValue)
+    $allUsers = @($allUsersResult.data)
+}
+
+$readableProbes = New-Object System.Collections.Generic.List[object]
+$sampleUserId = $null
+if (@($tenantUsersSample).Count -gt 0) {
+    $sampleUserId = Get-ObjectPropertyValue -Object $tenantUsersSample[0] -Name "id"
+}
+elseif ($me -and (Get-ObjectPropertyValue -Object $me -Name "id")) {
+    $sampleUserId = Get-ObjectPropertyValue -Object $me -Name "id"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($sampleUserId)) {
+    $readableProbes.Add((Invoke-GraphReadableProbe -Name "userStandardProperties" -Path "/users/${sampleUserId}?`$select=$userSelect" -ExpectedProperties $userSelectFields)) | Out-Null
+    $readableProbes.Add((Invoke-GraphReadableProbe -Name "userCustomSecurityAttributes" -Path "/users/${sampleUserId}?`$select=id,displayName,userPrincipalName,customSecurityAttributes" -ExpectedProperties @("id", "displayName", "userPrincipalName", "customSecurityAttributes"))) | Out-Null
+    $readableProbes.Add((Invoke-GraphReadableProbe -Name "userMemberOfGroups" -Path "/users/$sampleUserId/memberOf?`$top=100&`$select=id,displayName,description" -ExpectedProperties @("id", "displayName", "description") -Collection)) | Out-Null
+    $readableProbes.Add((Invoke-GraphReadableProbe -Name "userTransitiveMemberOfGroups" -Path "/users/$sampleUserId/transitiveMemberOf?`$top=100&`$select=id,displayName,description" -ExpectedProperties @("id", "displayName", "description") -Collection)) | Out-Null
+    $readableProbes.Add((Invoke-GraphReadableProbe -Name "userRegisteredDevices" -Path "/users/$sampleUserId/registeredDevices?`$top=100&`$select=id,displayName,operatingSystem,operatingSystemVersion,trustType,isCompliant,isManaged,approximateLastSignInDateTime" -ExpectedProperties @("id", "displayName", "operatingSystem", "operatingSystemVersion", "trustType", "isCompliant", "isManaged", "approximateLastSignInDateTime") -Collection)) | Out-Null
+    $readableProbes.Add((Invoke-GraphReadableProbe -Name "userAuthenticationMethods" -Path "/users/$sampleUserId/authentication/methods" -ExpectedProperties @("id", "@odata.type", "displayName") -Collection)) | Out-Null
+}
+
+$tenantDirectoryData = [ordered]@{
+    user_count_visible = Get-GraphCountFromCollectionResult -Result $usersSampleResult
+    group_count_visible = Get-GraphCountFromCollectionResult -Result $groupsSampleResult
+    sample_size_requested = $safeDirectorySampleSize
+    users_sample_count = @($tenantUsersSample).Count
+    groups_sample_count = @($tenantGroupsSample).Count
+    users_sample_truncated = [bool]($usersSampleResult.status -eq "Succeeded" -and $null -ne $usersSampleResult.data -and $usersSampleResult.data.PSObject.Properties.Name -contains "@odata.nextLink")
+    groups_sample_truncated = [bool]($groupsSampleResult.status -eq "Succeeded" -and $null -ne $groupsSampleResult.data -and $groupsSampleResult.data.PSObject.Properties.Name -contains "@odata.nextLink")
+    user_select_properties_requested = @($userSelectFields)
+    group_select_properties_requested = @($groupSelectFields)
+    readable_property_probes = @($readableProbes | ForEach-Object { ConvertTo-PlainObject $_ })
+    sample_user_id_used_for_property_probe = $sampleUserId
+    all_users_enumeration_requested = [bool]$EnumerateAllUsers
+    all_users_returned_count = @($allUsers).Count
+    all_users_truncated = if ($allUsersResult) { [bool]$allUsersResult.truncated } else { $false }
+    users_sample = @($tenantUsersSample | ForEach-Object { ConvertTo-PlainObject $_ })
+    groups_sample = @($tenantGroupsSample | ForEach-Object { ConvertTo-PlainObject $_ })
+    all_users = if ($EnumerateAllUsers) { @($allUsers | ForEach-Object { ConvertTo-PlainObject $_ }) } else { @() }
+    collection_results = @(
+        [pscustomobject]@{
+            name = $usersSampleResult.name
+            uri = $usersSampleResult.uri
+            status = $usersSampleResult.status
+            count = @($tenantUsersSample).Count
+            error = $usersSampleResult.error
+        },
+        [pscustomobject]@{
+            name = $groupsSampleResult.name
+            uri = $groupsSampleResult.uri
+            status = $groupsSampleResult.status
+            count = @($tenantGroupsSample).Count
+            error = $groupsSampleResult.error
+        }
+    ) + $(if ($allUsersResult) {
+        @([pscustomobject]@{
+            name = $allUsersResult.name
+            uri = $allUsersResult.uri
+            status = $allUsersResult.status
+            count = @($allUsers).Count
+            page_count = $allUsersResult.page_count
+            truncated = $allUsersResult.truncated
+            error = $allUsersResult.error
+        })
+    } else { @() })
+    notes = @(
+        "A coleta padrao contabiliza usuarios e grupos enumeraveis e guarda amostras limitadas pelo parametro DirectorySampleSize.",
+        "Use -EnumerateAllUsers para salvar todos os usuarios enumeraveis em tenant_directory.all_users.",
+        "Memberships, customSecurityAttributes, dispositivos e metodos de autenticacao sao testados por probe em um usuario de amostra para indicar propriedades legiveis sem enumerar todo o tenant por padrao."
+    )
+}
+
+Add-AccessReviewRawData -State $State -Name "entra-tenant-directory" -Data $tenantDirectoryData | Out-Null
+
 Add-AccessReviewRawData -State $State -Name "entra-graph-rest-partial-base" -Data ([ordered]@{
-    current_user = ConvertTo-PlainObject $me
+    current_user = ConvertTo-PlainObject $currentUserForReport
     organizations = @($org | ForEach-Object { ConvertTo-PlainObject $_ })
     member_of_count = @($memberOf).Count
     owned_objects_count = @($ownedObjects).Count
+    tenant_user_count_visible = $tenantDirectoryData.user_count_visible
+    tenant_group_count_visible = $tenantDirectoryData.group_count_visible
+    tenant_users_sample_count = $tenantDirectoryData.users_sample_count
+    tenant_groups_sample_count = $tenantDirectoryData.groups_sample_count
     applications_sample_count = @($applications).Count
     service_principals_sample_count = @($servicePrincipals).Count
     request_results = @($responses | ForEach-Object {
@@ -287,24 +542,12 @@ Add-AccessReviewRawData -State $State -Name "entra-graph-rest-partial-base" -Dat
     })
 }) | Out-Null
 
-$privilegedCollectionResults = @()
-try {
-    $privilegedCollectionResults += (Invoke-GraphRestCollection -Name "directoryRoleTemplates" -Path "/directoryRoleTemplates?`$top=999")
-    $privilegedCollectionResults += (Invoke-GraphRestCollection -Name "directoryRolesExpanded" -Path "/directoryRoles?`$expand=members&`$top=100")
-    $privilegedCollectionResults += (Invoke-GraphRestCollection -Name "roleManagementAssignments" -Path "/roleManagement/directory/roleAssignments?`$expand=principal,roleDefinition&`$top=100")
-    $privilegedCollectionResults += (Invoke-GraphRestCollection -Name "roleManagementEligibility" -Path "/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal,roleDefinition&`$top=100")
-}
-catch {
-    $privilegedCollectionResults += [pscustomobject]@{
-        name = "privilegedCollectionUnhandled"
-        uri = $null
-        status = "Failed"
-        data = @()
-        page_count = 0
-        truncated = $false
-        error = $_.Exception.Message
-    }
-}
+$privilegedCollectionResults = @(
+    Invoke-GraphRestCollectionSafe -Name "directoryRoleTemplates" -Path "/directoryRoleTemplates?`$top=999"
+    Invoke-GraphRestCollectionSafe -Name "directoryRolesExpanded" -Path "/directoryRoles?`$expand=members&`$top=100"
+    Invoke-GraphRestCollectionSafe -Name "roleManagementAssignments" -Path "/roleManagement/directory/roleAssignments?`$expand=principal,roleDefinition&`$top=100"
+    Invoke-GraphRestCollectionSafe -Name "roleManagementEligibility" -Path "/roleManagement/directory/roleEligibilityScheduleInstances?`$expand=principal,roleDefinition&`$top=100"
+)
 
 function Get-CollectionData {
     [CmdletBinding()]
@@ -319,28 +562,6 @@ function Get-CollectionData {
     }
 
     return @($item[0].data)
-}
-
-function Get-ObjectPropertyValue {
-    [CmdletBinding()]
-    param(
-        [AllowNull()]$Object,
-        [Parameter(Mandatory)][string]$Name
-    )
-
-    if ($null -eq $Object) {
-        return $null
-    }
-
-    if ($Object -is [System.Collections.IDictionary] -and $Object.Contains($Name)) {
-        return $Object[$Name]
-    }
-
-    if ($Object.PSObject.Properties.Name -contains $Name) {
-        return $Object.$Name
-    }
-
-    return $null
 }
 
 function Set-MapValue {
@@ -492,7 +713,7 @@ if ($DeepEnumerate) {
         $isUser = ($principalType -match "user" -or -not [string]::IsNullOrWhiteSpace($principalUpn))
 
         if ($isUser) {
-            $userDetail = Invoke-GraphRestGet -Name "privilegedUser:$principalId" -Path "/users/$principalId?`$select=id,displayName,userPrincipalName,mail,accountEnabled,userType,createdDateTime,lastPasswordChangeDateTime,signInActivity,onPremisesSyncEnabled,onPremisesLastSyncDateTime,department,jobTitle,companyName,officeLocation,mobilePhone,businessPhones"
+            $userDetail = Invoke-GraphRestGet -Name "privilegedUser:$principalId" -Path "/users/${principalId}?`$select=id,displayName,userPrincipalName,mail,accountEnabled,userType,createdDateTime,lastPasswordChangeDateTime,signInActivity,onPremisesSyncEnabled,onPremisesLastSyncDateTime,department,jobTitle,companyName,officeLocation,mobilePhone,businessPhones"
             if ($userDetail.status -eq "Succeeded") {
                 Set-MapValue -Map $principal -Name "details" -Value (ConvertTo-PlainObject $userDetail.data)
             }
@@ -593,13 +814,14 @@ $graphData = [ordered]@{
             amr = if (Get-TokenClaim -Claims $tokenClaims -Name "amr") { @(Get-TokenClaim -Claims $tokenClaims -Name "amr") } else { @() }
         }
     } else { $null }
-    current_user = ConvertTo-PlainObject $me
+    current_user = ConvertTo-PlainObject $currentUserForReport
     organizations = @($org | ForEach-Object { ConvertTo-PlainObject $_ })
     member_of = @($memberOf | ForEach-Object { ConvertTo-PlainObject $_ })
     owned_objects = @($ownedObjects | ForEach-Object { ConvertTo-PlainObject $_ })
     visible_directory_roles = @($directoryRoles | ForEach-Object { ConvertTo-PlainObject $_ })
     visible_applications_sample = @($applications | ForEach-Object { ConvertTo-PlainObject $_ })
     visible_service_principals_sample = @($servicePrincipals | ForEach-Object { ConvertTo-PlainObject $_ })
+    tenant_directory = $tenantDirectoryData
     privileged_accounts = $privilegedAccountsData
     request_results = @($responses | ForEach-Object {
         [pscustomobject]@{
@@ -618,6 +840,7 @@ $graphData = [ordered]@{
     })
     notes = @(
         "Este coletor usa Invoke-RestMethod contra Microsoft Graph e nao carrega Microsoft.Graph PowerShell SDK.",
+        "Amostras de usuarios e grupos do tenant sao limitadas por DirectorySampleSize; use -EnumerateAllUsers para salvar todos os usuarios enumeraveis.",
         "Amostras de memberOf, ownedObjects, applications e servicePrincipals limitadas a 100 itens para reduzir volume.",
         "O token de acesso nao e gravado no relatorio."
     )
