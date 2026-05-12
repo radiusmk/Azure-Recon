@@ -1,0 +1,29 @@
+# Generated assessment output. These files can contain tenant inventory,
+# identities, app IDs, role assignments, and other sensitive environment data.
+reports/
+
+# Local exports or ad-hoc inputs copied from Graph Explorer / Azure tools.
+graph-explorer-export*.json
+azure-access-review*.json
+azure-access-review*.md
+service-principals*.csv
+service-principals*.md
+
+# Runtime logs and transcripts.
+*.log
+*.trace
+*.transcript
+PowerShell_transcript*.txt
+
+# Local scratch/output folders.
+tmp/
+temp/
+out/
+artifacts/
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
